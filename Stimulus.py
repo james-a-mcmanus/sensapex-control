@@ -158,7 +158,7 @@ class SetupParameters(Parameters):
         self.midpoint = None
         self.max_speed = None
 
-    def axistype(property):
+    def axistype(self, property):
         if property not in  ["max_speed"]:
             return True
         else:
@@ -167,7 +167,7 @@ class SetupParameters(Parameters):
     def run(self, device):
         # loop over the attributes and fix them up if they're axistypes. 
         for prop in self.__dict__.keys():
-            if axistype("prop"):
+            if self.axistype("prop"):
                 ax_prop = self.__get__attr(prop)
                 self.__setattr__(prop, Axis(np.array(ax_prop[0]), np.array(ax_prop[1])))
 
@@ -204,7 +204,7 @@ class RunParameters(Parameters):
         elif type(self.run_positions) == list:
             self.run_positions = Axis(np.array(self.run_positions[0]), np.array(self.run_positions[1]))
 
-    def set_timings():
+    def set_timings(self):
         if (self.numframes and self.framerate) is not None:
             self.timelimit = self.numframes * self.framerate # in seconds
             actual_distance = self.timelimit * self.speed # in um
