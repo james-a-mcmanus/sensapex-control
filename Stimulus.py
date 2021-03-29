@@ -11,7 +11,7 @@ UMP.set_library_path(r"C:\Users\James\Downloads\umsdk-1.010-binaries\x64")
 ump = UMP.get_ump()
 device_list = ump.list_devices()
 
-MAX_SPEED=2000
+MAX_SPEED=4000
 MAX_REPS = 2
 MAX_STEP=100
 DEF_FRAMERATE = 30
@@ -27,7 +27,9 @@ mid= np.array([5000,5000,5000])
 comport = 'COM26'
 
 class Device(object):
-
+    """
+    Main control device for the manipulator, implements movement + interaction with the trigger
+    """
     def __init__(self, device_id, com_port, min_x, max_x, min_y, max_y, min_z, max_z, midpoint, max_speed):
 
         self.manipulator = ump.get_device(device_id)
@@ -48,28 +50,33 @@ class Device(object):
     def goto_halfway(self, speed=2):
         self.manipulator.goto_pos((self.x_axis.midpoint()[0], self.y_axis.midpoint()[1], self.z_axis.midpoint()[2]), speed=speed)
     
-    def scan_axis(self, axis, speed=MAX_SPEED, numreps=MAX_REPS, framerate=DEF_FRAMERATE, numframes=DEF_NUMFRAMES):
-        self.manipulator.goto_pos(axis.point1, speed=speed)
-        positions = np.zeros(ceil(framerate * numframes) * 2)
+    def scan_axis(self, params)#axis, speed=MAX_SPEED, numreps=MAX_REPS, framerate=DEF_FRAMERATE, numframes=DEF_NUMFRAMES):
+        
+        #setup
+        axis = params.run_positions
+        self.manipulator.goto_pos(axis.point1, speed=params.speed)
         self.wait_for_finish(np.empty((1,4),dtype=float))
         sys.stdout.write("READY" + "\n")
         sys.stdout.flush()
-        self.trigger.wait_for_trigger()
         positions = np.array([time.perf_counter(), *np.array(self.manipulator.get_pos())])
-        for target in [axis.point2, axis.point1] * numreps:
+        self.trigger.wait_for_trigger()
+        
+        #run
+        for target in [axis.point2, axis.point1] * params.numreps:
             self.manipulator.goto_pos(target, speed=speed)
             positions = self.wait_for_finish(positions)
         positions[:,0] = positions[:,0] - positions[0,0]
         return positions
 
-    def scan_midpoint(self, axis, speed=MAX_SPEED, numreps=MAX_REPS, framerate=DEF_FRAMERATE, numframes=DEF_NUMFRAMES):
+    def scan_midpoint(self, params):
+        axis = params.run_positions
         xmid = self.midpoint[0] 
         x1 = axis.point1[0]
         x2 = axis.point2[0]
         xlen = min(x1-xmid, x2-xmid)
         axis.point1[0] = xmid - xlen ##assume point1 is less than point2??
         axis.point2[0] = xim + xlen
-        return scan_axis(axis, speed=MAX_SPEED, numreps=MAX_REPS, framerate=DEF_FRAMERATE, NUMFRAMES=DEF_NUMFRAMES)
+        return scan_axis(params)
 
     # scans along axis1, and then along axis2. 
     def scan_plane(self, axis1, axis2, speed, numreps, stepsize):
@@ -108,6 +115,9 @@ class Plane(object):
         self.point4 = point4
 
 class Trigger(Serial):
+    """
+    Serial port to check if the scanner head has been triggered.
+    """
     def __init__(self, comport, baudrate):
         super().__init__(comport, baudrate)
         if(self.isOpen() == False):
@@ -168,24 +178,25 @@ class RunParameters(Parameters):
         self.speed = MAX_SPEED
         self.numreps = MAX_REPS
         self.stepsize = MAX_STEP
-        self.framerate = 34.2
-        self.numframes = 100
-        self.filename = ""
+        self.framerate = None
+        self.numframes = None
+        self.filename = None
+        self.timelimit = None
 
     def run(self, device):
+
         if self.run_type == "axis":
-            self.stringoraxispositions()
-            positions = device.scan_axis(self.run_positions, speed=self.speed, numreps=self.numreps)
-            np.savez_compressed(self.filename, positions)
-            return "Device Ran Successfully\n"
-        if self.run_type == "midpoint":
-            self.stringoraxispositions()
-            positions = device.scan_midpoint(self.run_positions, speed=self.speed, numreps=self.numreps)
-            np.savez_compressed(self.filename, positions)
-            return "Device Ran Successfully\n"            
+            runfun = device.scan_axis
+        elif self.run_type == "midpoint":
+            runfun = device.scan_midpoint
         else:
-            return "Didn't understand the run command\n"
-        # implement run plane.
+            return "Didn't understand that run command\n"
+
+        self.set_timings()
+        self.stringoraxispositions()
+        positions = runfun(self)
+        np.savez_compressed(self.filename, positions)
+        return "Device Ran Successfully\n"
 
     def stringoraxispositions(self):
         if type(self.run_positions) == str:
@@ -193,6 +204,11 @@ class RunParameters(Parameters):
         elif type(self.run_positions) == list:
             self.run_positions = Axis(np.array(self.run_positions[0]), np.array(self.run_positions[1]))
 
+    def set_timings():
+        if (self.numframes and self.framerate) is not None:
+            self.timelimit = self.numframes * self.framerate # in seconds
+            actual_distance = self.timelimit * self.speed # in um
+            self.numreps = ceil(actual_distance / self.run_positions.distance) # find how many actual  repetitions we can do in that time.
 
 def get_measurements(manipulator):
     input("minimum x position:")
@@ -254,8 +270,6 @@ def parse(input_string):
         return [parse(item) for item in input_string]
     elif type(input_string) == list:
         input_string = input_string[0]
-
-
     if input_string == "":
         return None
     elif re.match("\A[0-9]+\.[0-9]+\Z", input_string):
@@ -288,7 +302,7 @@ main(d)
 # - TAKE MORE COMPLEX ARGUMENTS                     ✅
 # - work out how to do pass timeouts
 # - scan plane
-# - only run as long as frames and fps
+# - only run as long as frames and fps              ✅
 # - Imspector save and export to folder
 # - Turn get_measurements into a script in imspector
 
