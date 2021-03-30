@@ -28,7 +28,7 @@ comport = 'COM26'
 
 class Device(object):
     """
-    Main control device for the manipulator, implements movement + interaction with the trigger
+    Main control device for the manipulator, implements movement + interaction with the Port
     """
     def __init__(self, device_id, com_port, min_x, max_x, min_y, max_y, min_z, max_z, midpoint, max_speed):
 
@@ -39,7 +39,7 @@ class Device(object):
         self.z_axis = Axis(np.array([min_x, min_y, min_z]), np.array([min_x, min_y, max_z]))
         self.max_speed = max_speed
         self.midpoint = midpoint
-        self.trigger = Trigger(com_port, 115200)
+        self.port = Port(com_port, 115200)
         self.running = True
 
     def wait_for_finish(self, position_data):
@@ -59,7 +59,7 @@ class Device(object):
         sys.stdout.write("READY" + "\n")
         sys.stdout.flush()
         positions = np.array([time.perf_counter(), *np.array(self.manipulator.get_pos())])
-        self.trigger.wait_for_trigger()
+        self.port.wait_for_trigger()
         
         #run
         for target in [axis.point2, axis.point1] * params.numreps:
@@ -84,7 +84,7 @@ class Device(object):
         self.manipulator.goto_pos(axis1.point1, speed=speed)
         self.wait_for_finish()
         steps = axis2.positions(stepsize)
-        self.trigger.wait_for_trigger()
+        self.port.wait_for_trigger()
         for step in steps:
             self.scan_axis(axis1 + step, speed, numreps)
 
@@ -114,27 +114,63 @@ class Plane(object):
         self.point3 = point3
         self.point4 = point4
 
-class Trigger(Serial):
+class Port(Serial):
     """
-    Serial port to check if the scanner head has been triggered.
+    Serial port to communicate triggering, aspects of the stimulus.
     """
     def __init__(self, comport, baudrate):
         super().__init__(comport, baudrate)
         if(self.isOpen() == False):
             self.open()
             self.read(400, timeout=1)
+        self.messagedict = {"quit" : self.stimulus_quit, "save" : self.stimulus_save, "reset": self.stimulus_reset, "params": self.stimulus_parameters, "load": self.stimulus_load, "trigger": self.stimulus_lookfor_trigger}
         # maybe get initial_info
 
-    def wait_for_trigger(self):
-        triggered = False
-        while not triggered:
+    def wait_for_trigger(self, params):
+        Ported = False
+        while not Ported:
             #while self.in_waiting:
             dat = self.read()
             #   print(dat)
             #   print(type(dat))
             if dat == b't':
-                triggered = True
+                Ported = True
                 break
+
+    def stimulus_quit(self, params):
+        self.write(b'Q\n')
+
+    def stimulus_save(self, params):
+        self.write(b'S\n')
+
+    def stimulus_reset(self, params):
+        self.write(b'R\n')
+
+    def stimulus_parameters(self, params):
+        self.write(b'C\n')
+        self.sendover(params.adaptionduration)
+        self.sendover(params.xpos)
+        self.sendover(params.ypos)
+        self.sendover(params.xscale)
+        self.sendover(params.yscale)
+        self.sendover(params.adaptionduration)
+        self.sendover(params.angle)
+        self.sendover(params.framelength)
+        self.sendover(params.whitebackground)
+        self.sendover(params.inversecolor)
+        self.sendover(params.externaltrigger)
+        self.sendover(params.savevideo)
+        self.sendover(params.repeatstim)
+
+    def stimulus_load(self, params):
+        self.write(b'L\n')
+        self.sendover(params.filename)
+
+    def stimulus_lookfor_trigger(self, params):
+        self.write(b'T\n')
+
+    def sendover(self, message):
+        self.write(str.encode(str(message) + "\n"))
 
 class Parameters(object):
     def parse_parameters(self, paramlist):
@@ -210,6 +246,31 @@ class RunParameters(Parameters):
             actual_distance = self.timelimit * self.speed # in um
             self.numreps = ceil(actual_distance / self.run_positions.distance) # find how many actual  repetitions we can do in that time.
 
+class StimulusParameters(Parameters):
+    def __init__(self):
+
+        self.message = None
+        self.adaptionduration = "0"
+        self.xpos = "451"
+        self.ypos = "519"
+        self.xscale = "1"
+        self.yscale = "600"
+        self.angle = "203"
+        self.framelength = "3"
+        self.whitebackground = "0"
+        self.inversecolor = "0"
+        self.externaltrigger = "1"
+        self.savevideo = "1"
+        self.repeatstim = "1"
+
+    def run(self, device):
+        
+        if self.message in devic.port.messagedict:
+            device.port.messagedict[message](self)
+        else 
+            raise Exception("That's not a valid command!")
+
+
 def get_measurements(manipulator):
     input("minimum x position:")
     min_x = manipulator.get_pos(timeout=1)[0]
@@ -261,8 +322,10 @@ def command_type(comtype):
         return RunParameters()
     elif comtype == "setup":
         return SetupParameters()
+    elif comtype == "stimulus":
+        return StimulusParameters()
     else:
-        raise Exception("Couldn't determine command type: try Run or Setup?") 
+        raise Exception("Couldn't determine command type: must be run, setup, or stimulus") 
 
 def parse(input_string):
 

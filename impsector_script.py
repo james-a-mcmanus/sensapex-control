@@ -1,18 +1,10 @@
+import os
 os.chdir(r"C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control")
 
-import os
 import subprocess
 #import lvbt
 from datetime import datetime
-import Imspex
-
-testcommand = "run | run_type axis | run_positions x_axis | speed 1000"
-
-proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-proc.stdin.write(command)
-
-m = lvbt.measurement("Measurement 1")
-
+from Imspex import *
 
 def get_fname():
 	return datetime.now().strftime("%Y%m%d%H%M_%S")
@@ -32,10 +24,22 @@ def run_command(process, command, measurement):
 	commandended = False
 	while not commandended:
 		line = stdout.readline().rstrip()
+		print(line)
 		commandended = True if "OVERANDOUT"	in line else False
-	
-	# then save the measurement.
 
+		# then save the measurement.
 
 def npzfilename(base):
 	return "| filename" + base + ".npz\n" 
+
+
+test = RunParameters()
+test.run_type = "axis"
+test.run_positions = "x_axis"
+test.speed = 4000
+
+proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+m = lvbt.measurement("Measurement 1")
+
+run_command(proc, test, m)
+
