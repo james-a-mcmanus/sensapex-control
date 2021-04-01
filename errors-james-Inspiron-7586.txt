@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control\Stimulus.py", line 373, in <module>
+    main(d)
+  File "C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control\Stimulus.py", line 368, in main
+    ret = run_command(command, device)
+  File "C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control\Stimulus.py", line 325, in run_command
+    return parse_command(command, device)
+  File "C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control\Stimulus.py", line 330, in parse_command
+    command_params = command_type(commands[0].strip())
+  File "C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control\Stimulus.py", line 342, in command_type
+    raise Exception("Couldn't determine command type: must be run, setup, or stimulus. You entered {}".format(comtype)) 
+Exception: Couldn't determine command type: must be run, setup, or stimulus. You entered 

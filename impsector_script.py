@@ -1,45 +1,59 @@
 import os
 os.chdir(r"C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control")
-
 import subprocess
-#import lvbt
-from datetime import datetime
-from Imspex import *
+import lvbt
+from datetime import datetime 
+import imp
 
-def get_fname():
-	return datetime.now().strftime("%Y%m%d%H%M_%S")
+logger = open("Imspector_Logging.txt","w")
 
-def run_command(process, command, measurement):
-	fileroot = get_fname()
-	command.filename = npzfilename(fileroot)
-	proc.stdin.write(command.serialise())
+I = imp.load_source('Imspex', 'Imspex.py')
+proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-	# wait for ready command from device:
-	deviceready = False
-	while not deviceready:
-		line = proc.stdout.readline().rstrip()
-		deviceready = True if "READY" in line else False
-	measurement.run()
-	
-	commandended = False
-	while not commandended:
-		line = stdout.readline().rstrip()
-		print(line)
-		commandended = True if "OVERANDOUT"	in line else False
+prepFolder = "D:\\JDoggyDog\\2021-03-31-P1"
 
-		# then save the measurement.
+# Setup device
+setup = I.SetupParameters()
+setup.x_axis = [[0,2674,14907], [2000,2674,14907]] # min max x
+setup.y_axis = [[20193,83,16204], [20193,8237,16204]] # min max y
+setup.z_axis = [[16325,12501,14907], [16325,12501,10000]] # min max z
+setup.midpoint = [16030,12501,14907]
+I.run_command(proc, setup)
 
-def npzfilename(base):
-	return "| filename" + base + ".npz\n" 
+logger.write("setup completed\n")
 
+fname = I.get_fname()
+fileroot = prepFolder + "\\" + fname
+os.mkdir(fileroot)
 
-test = RunParameters()
+logger.write("Directory Created\n")
+logger.write("fname is :" + fname)
+logger.write("\nFileroot is " + fileroot + "\n")
+# Setup a Manipulator Command.
+test =I.RunParameters()
 test.run_type = "axis"
 test.run_positions = "x_axis"
 test.speed = 4000
+test.filename = I.npzfilename(fileroot)
+test.numframes = 100
+test.framerate = 19.2
 
-proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 m = lvbt.measurement("Measurement 1")
 
-run_command(proc, test, m)
+logger.write("measurement created\n")
 
+try:
+    I.run_command(proc, test, m)
+except:
+    setup.save(fileroot + "setup.txt")
+    test.save(fileroot + "run.txt")
+    proc.kill()
+
+setup.save(fileroot + "setup.txt")
+test.save(fileroot + "run.txt")
+
+logger.write("command sent\n")
+m.export(prepFolder, fname)
+logger.close()
+proc.stdin.write("close\n")
+proc.kill()

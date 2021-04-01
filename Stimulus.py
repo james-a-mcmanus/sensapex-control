@@ -6,39 +6,36 @@ import re
 import ast
 from math import ceil
 import time
+import logging
 
 UMP.set_library_path(r"C:\Users\James\Downloads\umsdk-1.010-binaries\x64")
 ump = UMP.get_ump()
 device_list = ump.list_devices()
+logging.basicConfig(filename='logs.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+sys.stderr = open('errors.txt', 'w')
+
+if len(device_list) == 0:
+    raise Exception("No devices found.")
 
 MAX_SPEED=4000
 MAX_REPS = 2
 MAX_STEP=100
 DEF_FRAMERATE = 30
 DEF_NUMFRAMES = 100
-
-minX=0
-maxX=10000
-minY=0
-maxY=10000
-minZ=0
-maxZ=10000
-mid= np.array([5000,5000,5000])
 comport = 'COM26'
 
 class Device(object):
     """
     Main control device for the manipulator, implements movement + interaction with the Port
     """
-    def __init__(self, device_id, com_port, min_x, max_x, min_y, max_y, min_z, max_z, midpoint, max_speed):
+    def __init__(self, device_id, com_port):
 
         self.manipulator = ump.get_device(device_id)
         #(min_x, min_y, min_z, max_x, max_y, max_z) = get_measurements(self.manipulator)
-        self.x_axis = Axis(np.array([min_x, min_y, min_z]), np.array([max_x, min_y, min_z]))
-        self.y_axis = Axis(np.array([min_x, min_y, min_z]), np.array([min_x, max_y, min_z]))
-        self.z_axis = Axis(np.array([min_x, min_y, min_z]), np.array([min_x, min_y, max_z]))
-        self.max_speed = max_speed
-        self.midpoint = midpoint
+        self.x_axis = None
+        self.y_axis = None
+        self.z_axis = None
+        self.midpoint = None
         self.port = Port(com_port, 115200)
         self.running = True
 
@@ -50,7 +47,7 @@ class Device(object):
     def goto_halfway(self, speed=2):
         self.manipulator.goto_pos((self.x_axis.midpoint()[0], self.y_axis.midpoint()[1], self.z_axis.midpoint()[2]), speed=speed)
     
-    def scan_axis(self, params)#axis, speed=MAX_SPEED, numreps=MAX_REPS, framerate=DEF_FRAMERATE, numframes=DEF_NUMFRAMES):
+    def scan_axis(self, params):
         
         #setup
         axis = params.run_positions
@@ -63,7 +60,7 @@ class Device(object):
         
         #run
         for target in [axis.point2, axis.point1] * params.numreps:
-            self.manipulator.goto_pos(target, speed=speed)
+            self.manipulator.goto_pos(target, speed=params.speed)
             positions = self.wait_for_finish(positions)
         positions[:,0] = positions[:,0] - positions[0,0]
         return positions
@@ -75,8 +72,8 @@ class Device(object):
         x2 = axis.point2[0]
         xlen = min(x1-xmid, x2-xmid)
         axis.point1[0] = xmid - xlen ##assume point1 is less than point2??
-        axis.point2[0] = xim + xlen
-        return scan_axis(params)
+        axis.point2[0] = xmid + xlen
+        return self.scan_axis(params)
 
     # scans along axis1, and then along axis2. 
     def scan_plane(self, axis1, axis2, speed, numreps, stepsize):
@@ -107,6 +104,9 @@ class Axis(object):
     def midpoint(self):
         return (self.point2 - self.point1)/2
 
+    def to_string(self):
+        return str(self.point1) + " : " + str(self.point2)
+
 class Plane(object):
     def __init__(self, point1, point2, point3, point4):
         self.point1 = point1
@@ -126,7 +126,7 @@ class Port(Serial):
         self.messagedict = {"quit" : self.stimulus_quit, "save" : self.stimulus_save, "reset": self.stimulus_reset, "params": self.stimulus_parameters, "load": self.stimulus_load, "trigger": self.stimulus_lookfor_trigger}
         # maybe get initial_info
 
-    def wait_for_trigger(self, params):
+    def wait_for_trigger(self, params=None):
         Ported = False
         while not Ported:
             #while self.in_waiting:
@@ -137,13 +137,13 @@ class Port(Serial):
                 Ported = True
                 break
 
-    def stimulus_quit(self, params):
+    def stimulus_quit(self, params=None):
         self.write(b'Q\n')
 
-    def stimulus_save(self, params):
+    def stimulus_save(self, params=None):
         self.write(b'S\n')
 
-    def stimulus_reset(self, params):
+    def stimulus_reset(self, params=None):
         self.write(b'R\n')
 
     def stimulus_parameters(self, params):
@@ -162,11 +162,11 @@ class Port(Serial):
         self.sendover(params.savevideo)
         self.sendover(params.repeatstim)
 
-    def stimulus_load(self, params):
+    def stimulus_load(self, params=None):
         self.write(b'L\n')
         self.sendover(params.filename)
 
-    def stimulus_lookfor_trigger(self, params):
+    def stimulus_lookfor_trigger(self, params=None):
         self.write(b'T\n')
 
     def sendover(self, message):
@@ -185,6 +185,9 @@ class Parameters(object):
             sys.stdout.write(ptype + ": " + str(parse(pvalue)) + "\n")
         else:
             raise Exception("No attribute named: %s", ptype)
+    def save(self, fname):
+        with open(fname, 'w') as f:
+            f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.items()]))
 
 class SetupParameters(Parameters):
     def __init__(self):
@@ -195,17 +198,23 @@ class SetupParameters(Parameters):
         self.max_speed = None
 
     def axistype(self, property):
-        if property not in  ["max_speed"]:
-            return True
-        else:
+        if property in  ["max_speed", "midpoint"]:
             return False
+        else:
+            return True
 
     def run(self, device):
         # loop over the attributes and fix them up if they're axistypes. 
         for prop in self.__dict__.keys():
-            if self.axistype("prop"):
-                ax_prop = self.__get__attr(prop)
+            if self.axistype(prop):
+                ax_prop = getattr(self, prop)
                 self.__setattr__(prop, Axis(np.array(ax_prop[0]), np.array(ax_prop[1])))
+
+        for prop in self.__dict__.keys():
+            setattr(device, prop, getattr(self, prop))
+
+        sys.stdout.write("READY" + "\n")
+        sys.stdout.flush()
 
 class RunParameters(Parameters):
     def __init__(self):
@@ -226,15 +235,15 @@ class RunParameters(Parameters):
         elif self.run_type == "midpoint":
             runfun = device.scan_midpoint
         else:
-            return "Didn't understand that run command\n"
+            logging.warning("Didn't understand that run command\n")
 
+        self.stringoraxispositions(device)
         self.set_timings()
-        self.stringoraxispositions()
         positions = runfun(self)
         np.savez_compressed(self.filename, positions)
         return "Device Ran Successfully\n"
 
-    def stringoraxispositions(self):
+    def stringoraxispositions(self, device):
         if type(self.run_positions) == str:
             self.run_positions = getattr(device, self.run_positions)
         elif type(self.run_positions) == list:
@@ -242,9 +251,15 @@ class RunParameters(Parameters):
 
     def set_timings(self):
         if (self.numframes and self.framerate) is not None:
-            self.timelimit = self.numframes * self.framerate # in seconds
+            self.timelimit = self.numframes / self.framerate # in seconds
             actual_distance = self.timelimit * self.speed # in um
             self.numreps = ceil(actual_distance / self.run_positions.distance) # find how many actual  repetitions we can do in that time.
+
+    def save(self, fname):
+        with open(fname, 'w') as f:
+            f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.items()]))
+            if type(self.run_positions) == Axis:
+                f.write(self.run_positions.to_string())
 
 class StimulusParameters(Parameters):
     def __init__(self):
@@ -267,9 +282,8 @@ class StimulusParameters(Parameters):
         
         if self.message in devic.port.messagedict:
             device.port.messagedict[message](self)
-        else 
+        else:
             raise Exception("That's not a valid command!")
-
 
 def get_measurements(manipulator):
     input("minimum x position:")
@@ -302,9 +316,9 @@ def time_speed(d, speed):
 def origin(d):
     d.manipulator.goto_pos(d.x_axis.point1, speed=5000)
 
-def check_close(command, device):
+def run_command(command, device):
 
-    if command == "close":
+    if "close" in command:
         device.close = True
         return "Closing\n"
     else:
@@ -325,7 +339,7 @@ def command_type(comtype):
     elif comtype == "stimulus":
         return StimulusParameters()
     else:
-        raise Exception("Couldn't determine command type: must be run, setup, or stimulus") 
+        raise Exception("Couldn't determine command type: must be run, setup, or stimulus. You entered {}".format(comtype)) 
 
 def parse(input_string):
 
@@ -333,6 +347,7 @@ def parse(input_string):
         return [parse(item) for item in input_string]
     elif type(input_string) == list:
         input_string = input_string[0]
+
     if input_string == "":
         return None
     elif re.match("\A[0-9]+\.[0-9]+\Z", input_string):
@@ -341,7 +356,7 @@ def parse(input_string):
         return int(input_string)
     elif re.match("\A(true|false)\Z", input_string):
         return bool(input_string)
-    elif re.match("\A\[+[0-9,.]+\]\Z", input_string):
+    elif re.match("\A\[+[0-9,.,\],\[,-]+\]\Z", input_string): #matches list looking type
         return ast.literal_eval(input_string)
     else:
         return input_string
@@ -350,11 +365,11 @@ def main(device):
 
     while device.running:
         command = sys.stdin.readline().rstrip()
-        ret = parse_command(command, device)
+        ret = run_command(command, device)
         sys.stdout.write("OVERANDOUT" + "\n")
         sys.stdout.flush()
 
-d = Device(device_list[0], comport, minX, maxX, minY, maxY, minZ, maxZ, mid, MAX_SPEED)
+d = Device(device_list[0], comport)
 main(d)
 
 
@@ -363,10 +378,13 @@ main(d)
 # - SCAN EQUAL ON BOTH SIDES RELATIVE TO MIDPOINT   ✅
 # - WORK WITH IMSPECTOR                             ✅
 # - TAKE MORE COMPLEX ARGUMENTS                     ✅
-# - work out how to do pass timeouts
 # - scan plane
 # - only run as long as frames and fps              ✅
-# - Imspector save and export to folder
-# - Turn get_measurements into a script in imspector
+# - Imspector save and export to folder				✅
+# - Turn get_measurements into a script in imspector(✅)
+# - prevent any movement from occuring outside of those pre-determined axes.
+# - change script to work with max and mins not the axes
+# - build timeouts into the arduino scripts
+# - change arduino scripts to communicate over extra serial pins.
 
 
