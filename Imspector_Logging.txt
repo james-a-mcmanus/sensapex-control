@@ -1,6 +1,0 @@
-setup completed
-Directory Created
-fname is :202103311615_20
-Fileroot is D:\JDoggyDog\2021-03-31-P1\202103311615_20
-measurement created
-command sent

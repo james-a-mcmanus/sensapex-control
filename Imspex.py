@@ -79,6 +79,34 @@ class RunParameters(Parameters):
         else:
             return str(var)
 
+class StimulusParameters(Parameters):
+    def __init__(self):
+
+        self.message = None
+        self.adaptionduration = None
+        self.xpos = None
+        self.ypos = None
+        self.xscale = None
+        self.yscale = None
+        self.angle = None
+        self.framelength = None
+        self.filename = None
+        self.whitebackground = None
+        self.inversecolor = None
+        self.externaltrigger = None
+        self.savevideo = None
+        self.repeatstim = None
+
+    def serialise(self):
+        outstring = "stimulus"
+        properties = self.__dict__
+        for prop in properties:
+            attr = getattr(self, prop)
+            outstring = (outstring + " | " + str(prop) + " " + self.tostring(attr))  if (attr is not None) else outstring
+        return outstring + "\n"
+
+    def tostring(self, var):
+        if var == ""
 
 def get_fname():
     return datetime.now().strftime("%Y%m%d%H%M_%S")
@@ -102,3 +130,6 @@ def run_command(process, command, measurement=None):
 
 def npzfilename(base):
     return base + ".npz" 
+
+
+possible_messages = ["quit", "save", "reset", "params", "load", "trigger"]

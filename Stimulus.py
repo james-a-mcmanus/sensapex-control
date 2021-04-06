@@ -134,7 +134,7 @@ class Port(Serial):
             #   print(dat)
             #   print(type(dat))
             if dat == b't':
-                Ported = True
+                Ported = True # is this necessary? may save a couple us by removing.
                 break
 
     def stimulus_quit(self, params=None):
@@ -162,7 +162,7 @@ class Port(Serial):
         self.sendover(params.savevideo)
         self.sendover(params.repeatstim)
 
-    def stimulus_load(self, params=None):
+    def stimulus_load(self, params):
         self.write(b'L\n')
         self.sendover(params.filename)
 
@@ -280,7 +280,7 @@ class StimulusParameters(Parameters):
 
     def run(self, device):
         
-        if self.message in devic.port.messagedict:
+        if self.message in device.port.messagedict:
             device.port.messagedict[message](self)
         else:
             raise Exception("That's not a valid command!")
@@ -386,5 +386,6 @@ main(d)
 # - change script to work with max and mins not the axes
 # - build timeouts into the arduino scripts
 # - change arduino scripts to communicate over extra serial pins.
+# - Better error handling
 
 
