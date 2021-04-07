@@ -106,7 +106,17 @@ class StimulusParameters(Parameters):
         return outstring + "\n"
 
     def tostring(self, var):
-        if var == ""
+        return str(var)
+
+    def setup(self, process):
+        # load the file
+        self.message = "load"
+        run_command(process, self)
+        # load the parameters
+        self.message = "params"
+        run_command(process, self)
+        # get ready to run.
+        self.message = "trigger"
 
 def get_fname():
     return datetime.now().strftime("%Y%m%d%H%M_%S")
@@ -130,6 +140,7 @@ def run_command(process, command, measurement=None):
 
 def npzfilename(base):
     return base + ".npz" 
+
 
 
 possible_messages = ["quit", "save", "reset", "params", "load", "trigger"]

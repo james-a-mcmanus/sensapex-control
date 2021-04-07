@@ -22,7 +22,7 @@ MAX_REPS = 2
 MAX_STEP=100
 DEF_FRAMERATE = 30
 DEF_NUMFRAMES = 100
-comport = 'COM26'
+comport = 'COM25'
 
 class Device(object):
     """
@@ -153,7 +153,6 @@ class Port(Serial):
         self.sendover(params.ypos)
         self.sendover(params.xscale)
         self.sendover(params.yscale)
-        self.sendover(params.adaptionduration)
         self.sendover(params.angle)
         self.sendover(params.framelength)
         self.sendover(params.whitebackground)
@@ -277,13 +276,17 @@ class StimulusParameters(Parameters):
         self.externaltrigger = "1"
         self.savevideo = "1"
         self.repeatstim = "1"
+        self.filename = "whitescreen.mat"
 
     def run(self, device):
         
         if self.message in device.port.messagedict:
-            device.port.messagedict[message](self)
+            device.port.messagedict[self.message](self)
         else:
             raise Exception("That's not a valid command!")
+
+        sys.stdout.write("READY" + "\n")
+        sys.stdout.flush()
 
 def get_measurements(manipulator):
     input("minimum x position:")
@@ -370,7 +373,7 @@ def main(device):
         sys.stdout.flush()
 
 d = Device(device_list[0], comport)
-main(d)
+#main(d)
 
 
 #TODO:
