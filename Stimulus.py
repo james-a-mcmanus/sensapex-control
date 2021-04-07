@@ -31,10 +31,14 @@ class Device(object):
     def __init__(self, device_id, com_port):
 
         self.manipulator = ump.get_device(device_id)
-        #(min_x, min_y, min_z, max_x, max_y, max_z) = get_measurements(self.manipulator)
-        self.x_axis = None
-        self.y_axis = None
-        self.z_axis = None
+
+        self.x_range = None
+        self.y_range = None
+        self.z_range = None
+
+        self.x_axis = None # deprecated
+        self.y_axis = None # deprecated
+        self.z_axis = None # deprecated
         self.midpoint = None
         self.port = Port(com_port, 115200)
         self.running = True
@@ -45,7 +49,7 @@ class Device(object):
         return position_data
 
     def goto_halfway(self, speed=2):
-        self.manipulator.goto_pos((self.x_axis.midpoint()[0], self.y_axis.midpoint()[1], self.z_axis.midpoint()[2]), speed=speed)
+        self.manipulator.goto_pos([np.mean(self.x_range), np.mean(self.y_range), np.mean(self.z_range)], speed=speed)
     
     def scan_axis(self, params):
         
@@ -84,10 +88,6 @@ class Device(object):
         self.port.wait_for_trigger()
         for step in steps:
             self.scan_axis(axis1 + step, speed, numreps)
-
-    async def get_pos(self, numpos):
-
-        await self.manipulator.get_pos()
 
 class Axis(object):
     def __init__(self, point1, point2):
@@ -190,6 +190,9 @@ class Parameters(object):
 
 class SetupParameters(Parameters):
     def __init__(self):
+        self.x_range = None
+        self.y_range = None
+        self.z_range = None
         self.x_axis = None
         self.y_axis = None
         self.z_axis = None
@@ -197,7 +200,7 @@ class SetupParameters(Parameters):
         self.max_speed = None
 
     def axistype(self, property):
-        if property in  ["max_speed", "midpoint"]:
+        if property in  ["max_speed", "midpoint", "x_range", "y_range", "z_range"]:
             return False
         else:
             return True
@@ -238,6 +241,7 @@ class RunParameters(Parameters):
 
         self.stringoraxispositions(device)
         self.set_timings()
+        self.check_limits(device)
         positions = runfun(self)
         np.savez_compressed(self.filename, positions)
         return "Device Ran Successfully\n"
@@ -245,6 +249,8 @@ class RunParameters(Parameters):
     def stringoraxispositions(self, device):
         if type(self.run_positions) == str:
             self.run_positions = getattr(device, self.run_positions)
+            if self.run_positions is None:
+                raise Exception("Tried to set run positions by attribute, but attribute was not set.")
         elif type(self.run_positions) == list:
             self.run_positions = Axis(np.array(self.run_positions[0]), np.array(self.run_positions[1]))
 
@@ -253,6 +259,18 @@ class RunParameters(Parameters):
             self.timelimit = self.numframes / self.framerate # in seconds
             actual_distance = self.timelimit * self.speed # in um
             self.numreps = ceil(actual_distance / self.run_positions.distance) # find how many actual  repetitions we can do in that time.
+
+    def check_limits(self, device):
+        if type(self.run_positions) == Axis:
+            p1 = self.run_positions.point1
+            p2 = self.run_positions.point2
+            x_ok = (device.x_range[0] < p1[0] < device.x_range[1]) and (device.x_range[0] < p2[0] < device.x_range[1])
+            y_ok = (device.y_range[0] < p1[1] < device.y_range[1]) and (device.y_range[0] < p2[1] < device.y_range[1])
+            z_ok = (device.z_range[0] < p1[2] < device.z_range[1]) and (device.z_range[0] < p2[2] < device.z_range[1])
+            if x_ok and y_ok and z_ok:
+                return
+            else:
+                raise Exception("You asked me to move outside of my range!")
 
     def save(self, fname):
         with open(fname, 'w') as f:
@@ -288,21 +306,6 @@ class StimulusParameters(Parameters):
         sys.stdout.write("READY" + "\n")
         sys.stdout.flush()
 
-def get_measurements(manipulator):
-    input("minimum x position:")
-    min_x = manipulator.get_pos(timeout=1)[0]
-    input("maximum x position:")
-    max_x = manipulator.get_pos()[0]
-    input("minimum y position: ")
-    min_y = manipulator.get_pos()[1]
-    input("maximum y position: ")
-    max_y = manipulator.get_pos()[1]
-    input("minimum z position: ")
-    min_z = manipulator.get_pos()[2]
-    input("maximum z position: ")
-    max_z = manipulator.get_pos()[2]
-    return (min_x, min_y, min_z, max_x, max_y, max_z)
-
 def intersection(axis1, axis2):
     return True
     # Do this later: https://stackoverflow.com/questions/3838329/how-can-i-check-if-two-segments-intersect
@@ -315,9 +318,6 @@ def time_speed(d, speed):
     d.wait_for_finish()
     t2 = time.perf_counter()
     print("time elapsed: ", t2-t1)
-
-def origin(d):
-    d.manipulator.goto_pos(d.x_axis.point1, speed=5000)
 
 def run_command(command, device):
 
@@ -384,11 +384,16 @@ d = Device(device_list[0], comport)
 # - scan plane
 # - only run as long as frames and fps              ✅
 # - Imspector save and export to folder				✅
-# - Turn get_measurements into a script in imspector(✅)
-# - prevent any movement from occuring outside of those pre-determined axes.
-# - change script to work with max and mins not the axes
+# - Turn get_measurements into a script in imspector✅
+# - prevent any movement from occuring outside of 
+#   those pre-determined axes.
+# - change script to work with max and mins not the
+#   axes
 # - build timeouts into the arduino scripts
-# - change arduino scripts to communicate over extra serial pins.
+# - change arduino scripts to communicate over 
+#   extra serial pins.
 # - Better error handling
 
-
+#BUGS:
+# - seems to run approx 2x too many loops for the frame rate, distance etc.
+#       - Best guesss is that the speed isn't accurate to 4000um. 

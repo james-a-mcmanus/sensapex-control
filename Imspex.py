@@ -28,6 +28,9 @@ class SetupParameters(Parameters):
         self.x_axis = None
         self.y_axis = None
         self.z_axis = None
+        self.x_range = None
+        self.y_range = None
+        self.z_range = None
         self.midpoint = None
         self.max_speed = None
     
@@ -140,7 +143,5 @@ def run_command(process, command, measurement=None):
 
 def npzfilename(base):
     return base + ".npz" 
-
-
 
 possible_messages = ["quit", "save", "reset", "params", "load", "trigger"]

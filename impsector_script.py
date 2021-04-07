@@ -16,16 +16,20 @@ os.mkdir(fileroot)
 
 # Setup device
 setup = I.SetupParameters()
-setup.x_axis = [[0,2674,14907], [2000,2674,14907]] # min max x
-setup.y_axis = [[20193,83,16204], [20193,8237,16204]] # min max y
-setup.z_axis = [[16325,12501,14907], [16325,12501,10000]] # min max z
+setup.x_range = [0, 2000]
+setup.y_range = [83, 8237]
+setup.z_range = [14908, 10000]
+
+#setup.x_axis = [[0,2674,14907], [2000,2674,14907]] # min max x
+#setup.y_axis = [[20193,83,16204], [20193,8237,16204]] # min max y
+#setup.z_axis = [[16325,12501,14907], [16325,12501,10000]] # min max z
 setup.midpoint = [16030,12501,14907]
 I.run_command(proc, setup)
 
 # Setup a Manipulator Command.
 test =I.RunParameters()
-test.run_type = "axis"
-test.run_positions = "x_axis"
+test.run_type = "midpoint"
+test.run_positions = [[0, 12501, 14907],[2000, 12501, 14907]]
 test.speed = 4000
 test.filename = I.npzfilename(fileroot)
 test.numframes = 100
