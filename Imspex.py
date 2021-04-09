@@ -3,7 +3,10 @@ This file is a counterpart to the parameter objects in Stimulus. Designed to be 
 """
 from datetime import datetime
 import sys
+import os
 
+
+#sys.stderr = open('Imspex_errors.txt', 'w')
 
 class Parameters(object):
     def parse_parameters(self, paramlist):
@@ -22,6 +25,30 @@ class Parameters(object):
     def save(self, fname):
         with open(fname, 'w') as f:
             f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.iteritems()]))
+
+    def run_command(self, process):
+        process.stdin.write(self.serialise())
+        deviceready = False
+        while not deviceready:
+            line = process.stdout.readline().rstrip()
+            deviceready = True if "READY" in line else False
+
+    def reset(self, process):
+        pass
+
+class Manipulator(Parameters):
+    def __init__(self):
+        self.s = SetupParameters()
+        self.r = RunParameters()
+
+    def setup(self, process):
+        self.s.run_command(process)
+
+    def trigger(self, process):
+        self.r.run_command(process)
+
+    def quit(self, process):
+        process.stdin.write("close\n")
 
 class SetupParameters(Parameters):
     def __init__(self):
@@ -52,7 +79,7 @@ class SetupParameters(Parameters):
             return str(var)
 
 class RunParameters(Parameters):
-    
+
     def __init__(self):
         self.run_type = None
         self.run_positions = None
@@ -114,34 +141,61 @@ class StimulusParameters(Parameters):
     def setup(self, process):
         # load the file
         self.message = "load"
-        run_command(process, self)
+        self.run_command(process)
         # load the parameters
         self.message = "params"
-        run_command(process, self)
-        # get ready to run.
+        self.run_command(process)
+        
+    def trigger(self, process):
         self.message = "trigger"
+        self.run_command(process)
 
-def get_fname():
-    return datetime.now().strftime("%Y%m%d%H%M_%S")
+    def reset(self, process):
+        self.message = "reset"
+        self.run_command(process)
 
-def run_command(process, command, measurement=None):
+    def quit(self, process):
+        self.message = "quit"
+        self.run_command(process)
 
-
-    process.stdin.write(command.serialise())
-    # wait for ready command from device:
-    deviceready = False
-    while not deviceready:
-        line = process.stdout.readline().rstrip()
-        deviceready = True if "READY" in line else False
-    if measurement is not None:
-        measurement.run()
-        commandended = False
-        while not commandended:
-            line = process.stdout.readline().rstrip()
-            print(line)
-            commandended = True if "OVERANDOUT" in line else False
+def get_fname(fileroot=None):
+    if fileroot is None:
+        return datetime.now().strftime("%Y%m%d%H%M_%S")
+    else:
+        return fileroot + "\\" + datetime.now().strftime("%Y%m%d%H%M_%S")
 
 def npzfilename(base):
     return base + ".npz" 
 
+
+def generate_recordingfolder(prepFolder):
+        basename = get_fname()
+        recordingFolder = prepFolder + "\\" + basename + "\\"
+        if not os.path.isdir(recordingFolder):
+            os.mkdir(recordingFolder)
+        return (recordingFolder, basename)
+
+def run_stimulus_recording(prepFolder, measurement, stimobj, proc):
+    recordingFolder, basename = generate_recordingfolder(prepFolder)
+    stimobj.setup(proc)
+    stimobj.trigger(proc)
+    measurement.run()
+    measurement.export(recordingFolder, basename)
+    stimobj.save(recordingFolder + basename + "_stimulus.txt")
+    stimobj.reset(proc)
+
+def run_manipulator_recording(prepFolder, measurement, stimobj, manobj, proc):
+    recordingFolder, basename = generate_recordingfolder(prepFolder)
+    manobj.r.filename = recordingFolder + basename + "_manipulator_positons.npz"
+    manobj.setup(proc)
+    stimobj.setup(proc)
+    stimobj.trigger(proc)
+    manobj.trigger(proc)
+    measurement.run()
+    measurement.export(recordingFolder, basename)
+    manobj.save(recordingFolder + basename + "_manipulator_parameters.txt")
+    stimobj.reset(proc)
+
+
 possible_messages = ["quit", "save", "reset", "params", "load", "trigger"]
+

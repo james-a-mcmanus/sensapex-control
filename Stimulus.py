@@ -31,7 +31,7 @@ class Device(object):
     def __init__(self, device_id, com_port):
 
         self.manipulator = ump.get_device(device_id)
-
+        self.ump = ump
         self.x_range = None
         self.y_range = None
         self.z_range = None
@@ -55,7 +55,7 @@ class Device(object):
         
         #setup
         axis = params.run_positions
-        self.manipulator.goto_pos(axis.point1, speed=params.speed)
+        self.manipulator.goto_pos(axis.point1, speed=MAX_SPEED)
         self.wait_for_finish(np.empty((1,4),dtype=float))
         sys.stdout.write("READY" + "\n")
         sys.stdout.flush()
@@ -71,12 +71,12 @@ class Device(object):
 
     def scan_midpoint(self, params):
         axis = params.run_positions
-        xmid = self.midpoint[0] 
-        x1 = axis.point1[0]
-        x2 = axis.point2[0]
+        xmid = self.midpoint
+        x1 = axis.point1[1]
+        x2 = axis.point2[1]
         xlen = min(x1-xmid, x2-xmid)
-        axis.point1[0] = xmid - xlen ##assume point1 is less than point2??
-        axis.point2[0] = xmid + xlen
+        axis.point1[1] = xmid - xlen ##assume point1 is less than point2??
+        axis.point2[1] = xmid + xlen
         return self.scan_axis(params)
 
     # scans along axis1, and then along axis2. 
@@ -88,6 +88,10 @@ class Device(object):
         self.port.wait_for_trigger()
         for step in steps:
             self.scan_axis(axis1 + step, speed, numreps)
+
+    def close(self):
+        self.port.close()
+        self.ump.close()
 
 class Axis(object):
     def __init__(self, point1, point2):
@@ -119,20 +123,18 @@ class Port(Serial):
     Serial port to communicate triggering, aspects of the stimulus.
     """
     def __init__(self, comport, baudrate):
-        super().__init__(comport, baudrate)
+        super().__init__(comport, baudrate, timeout=1)
         if(self.isOpen() == False):
             self.open()
-            self.read(400, timeout=1)
+            self.flushInput() # flush the buffer.
         self.messagedict = {"quit" : self.stimulus_quit, "save" : self.stimulus_save, "reset": self.stimulus_reset, "params": self.stimulus_parameters, "load": self.stimulus_load, "trigger": self.stimulus_lookfor_trigger}
         # maybe get initial_info
 
     def wait_for_trigger(self, params=None):
+        self.flushInput()
         Ported = False
         while not Ported:
-            #while self.in_waiting:
             dat = self.read()
-            #   print(dat)
-            #   print(type(dat))
             if dat == b't':
                 Ported = True # is this necessary? may save a couple us by removing.
                 break
@@ -181,7 +183,8 @@ class Parameters(object):
     def parse_parameter(self, ptype, pvalue):
         if ptype in self.__dict__.keys():
             self.__setattr__(ptype, parse(pvalue))
-            sys.stdout.write(ptype + ": " + str(parse(pvalue)) + "\n")
+            #sys.stdout.write(ptype + ": " + str(parse(pvalue)) + "\n")
+            #sys.stdout.flush()
         else:
             raise Exception("No attribute named: %s", ptype)
     def save(self, fname):
@@ -208,12 +211,13 @@ class SetupParameters(Parameters):
     def run(self, device):
         # loop over the attributes and fix them up if they're axistypes. 
         for prop in self.__dict__.keys():
-            if self.axistype(prop):
-                ax_prop = getattr(self, prop)
-                self.__setattr__(prop, Axis(np.array(ax_prop[0]), np.array(ax_prop[1])))
-
-        for prop in self.__dict__.keys():
-            setattr(device, prop, getattr(self, prop))
+            prop_value = getattr(self, prop)
+            if (prop_value is not None):
+                if (self.axistype(prop)):
+                    logging.warning("setting: {}".format(prop))
+                    logging.warning("value: {}".format(prop_value))
+                    setattr(self, prop, Axis(np.array(prop_value[0]), np.array(prop_value[1])))
+                setattr(device, prop, prop_value)
 
         sys.stdout.write("READY" + "\n")
         sys.stdout.flush()
@@ -237,7 +241,7 @@ class RunParameters(Parameters):
         elif self.run_type == "midpoint":
             runfun = device.scan_midpoint
         else:
-            logging.warning("Didn't understand that run command\n")
+            raise Exception("Didn't understand that Run command")
 
         self.stringoraxispositions(device)
         self.set_timings()
@@ -264,9 +268,9 @@ class RunParameters(Parameters):
         if type(self.run_positions) == Axis:
             p1 = self.run_positions.point1
             p2 = self.run_positions.point2
-            x_ok = (device.x_range[0] < p1[0] < device.x_range[1]) and (device.x_range[0] < p2[0] < device.x_range[1])
-            y_ok = (device.y_range[0] < p1[1] < device.y_range[1]) and (device.y_range[0] < p2[1] < device.y_range[1])
-            z_ok = (device.z_range[0] < p1[2] < device.z_range[1]) and (device.z_range[0] < p2[2] < device.z_range[1])
+            x_ok = (device.x_range[0] <= p1[0] <= device.x_range[1]) and (device.x_range[0] <= p2[0] <= device.x_range[1])
+            y_ok = (device.y_range[0] <= p1[1] <= device.y_range[1]) and (device.y_range[0] <= p2[1] <= device.y_range[1])
+            z_ok = (device.z_range[0] <= p1[2] <= device.z_range[1]) and (device.z_range[0] <= p2[2] <= device.z_range[1])
             if x_ok and y_ok and z_ok:
                 return
             else:
@@ -287,7 +291,7 @@ class StimulusParameters(Parameters):
         self.ypos = "519"
         self.xscale = "1"
         self.yscale = "600"
-        self.angle = "203"
+        self.angle = "0"
         self.framelength = "3"
         self.whitebackground = "0"
         self.inversecolor = "0"
@@ -322,8 +326,8 @@ def time_speed(d, speed):
 def run_command(command, device):
 
     if "close" in command:
-        device.close = True
-        return "Closing\n"
+        device.running = False
+        device.close()
     else:
         return parse_command(command, device)
 
@@ -368,12 +372,13 @@ def main(device):
 
     while device.running:
         command = sys.stdin.readline().rstrip()
-        ret = run_command(command, device)
-        sys.stdout.write("OVERANDOUT" + "\n")
-        sys.stdout.flush()
+        try:
+            ret = run_command(command, device)
+        except:
+            device.close()
 
 d = Device(device_list[0], comport)
-#main(d)
+main(d)
 
 
 #TODO:
@@ -383,17 +388,19 @@ d = Device(device_list[0], comport)
 # - TAKE MORE COMPLEX ARGUMENTS                     ✅
 # - scan plane
 # - only run as long as frames and fps              ✅
-# - Imspector save and export to folder				✅
+# - Imspector save and export to folder             ✅
 # - Turn get_measurements into a script in imspector✅
 # - prevent any movement from occuring outside of 
-#   those pre-determined axes.
+#   those pre-determined axes.                      ✅
 # - change script to work with max and mins not the
-#   axes
+#   axistypes                                       ✅
 # - build timeouts into the arduino scripts
-# - change arduino scripts to communicate over 
-#   extra serial pins.
-# - Better error handling
+# - change arduino scripts to communicate over
+#   extra serial pins.                              ✅
+# - Better error handling                           ✅
+# - set up higher baudrate for matlab -> esp32. 
 
 #BUGS:
 # - seems to run approx 2x too many loops for the frame rate, distance etc.
 #       - Best guesss is that the speed isn't accurate to 4000um. 
+# - midpoint doesn't run on a single axis?          ✅

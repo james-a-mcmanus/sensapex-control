@@ -1,60 +1,66 @@
 import os
 os.chdir(r"C:\Users\james\OneDrive\Sheffield\Building\Manipulator\Stimulus_Control")
 import subprocess
+import sys
 import lvbt
 from datetime import datetime 
 import imp
+import time
+import numpy as np
 
 I = imp.load_source('Imspex', 'Imspex.py')
 proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-
-prepFolder = "D:\\JDoggyDog\\2021-03-31-P1"
-
-fname = I.get_fname()
-fileroot = prepFolder + "\\" + fname
-os.mkdir(fileroot)
-
-# Setup device
-setup = I.SetupParameters()
-setup.x_range = [0, 2000]
-setup.y_range = [83, 8237]
-setup.z_range = [14908, 10000]
-
-#setup.x_axis = [[0,2674,14907], [2000,2674,14907]] # min max x
-#setup.y_axis = [[20193,83,16204], [20193,8237,16204]] # min max y
-#setup.z_axis = [[16325,12501,14907], [16325,12501,10000]] # min max z
-setup.midpoint = [16030,12501,14907]
-I.run_command(proc, setup)
-
-# Setup a Manipulator Command.
-test =I.RunParameters()
-test.run_type = "midpoint"
-test.run_positions = [[0, 12501, 14907],[2000, 12501, 14907]]
-test.speed = 4000
-test.filename = I.npzfilename(fileroot)
-test.numframes = 100
-test.framerate = 19.2
-
-# Setup a stimulus command.
-stimulus = I.StimulusParameters()
-stimulus.filename = "whitescreen.mat"
-stimulus.externaltrigger = "1"
-stimulus.setup(proc)
-
-m = lvbt.measurement("Measurement 1")
+sys.stderr = open('imspector_error_logs.txt', 'w')
 
 try:
-    I.run_command(proc, test, m)
-except:
-    setup.save(fileroot + "setup.txt")
-    test.save(fileroot + "run.txt")
-    stimulus.save(fileroot + "stimulus.txt")
-    proc.kill()
+	prepFolder = "D:\\JDoggyDog\\TEST2\\"
+	if not os.path.isdir(prepFolder):
+		os.mkdir(prepFolder)
 
-setup.save(fileroot + "setup.txt")
-test.save(fileroot + "run.txt")
-stimulus.save(fileroot + "stimulus.txt")
 
-m.export(prepFolder, fname)
-proc.stdin.write("close\n")
-proc.kill()
+	# Setup a white screen.
+	whitescreen = I.StimulusParameters()
+	whitescreen.filename = "whitescreen.mat"
+	whitescreen.savevideo = "0"
+	whitescreen.externaltrigger = "1"
+	whitescreen.repeatstim = "1"
+
+	# Setup a grating
+	grating = I.StimulusParameters()
+	grating.filename = "Grating_2x1000y4000t1v20w.mat"
+	grating.savevideo = "0"
+
+	# setup a manipulator command.
+	y_manipulator = I.Manipulator()
+	y_manipulator.s.x_range = [0,10000]
+	y_manipulator.s.y_range = [0,10000]
+	y_manipulator.s.z_range = [0,10000]
+	y_manipulator.s.midpoint = 5000
+	y_manipulator.r.run_type = "axis"
+	y_manipulator.r.run_positions = [[0,10000,10000],[10000,10000,10000]]
+
+
+	x_manipulator = I.Manipulator()
+	x_manipulator.s = y_manipulator.s
+	x_manipulator.r.run_type = "midpoint"
+	x_manipulator.r.run_positions = [[10000,0,10000],[10000,10000,10000]]
+
+
+	table = lvbt.table("xyz-Table")
+	m = lvbt.measurement("Measurement 1")
+	#m = Measurement("Measurement 1", prepFolder)
+	zrange = np.arange(-2, 2, 1)
+
+	for zval in zrange:
+		
+		table.z(zval)
+
+		I.run_stimulus_recording(prepFolder, m, grating, proc)
+		I.run_manipulator_recording(prepFolder, m, whitescreen, y_manipulator, proc)
+		I.run_manipulator_recording(prepFolder, m, whitescreen, x_manipulator, proc)
+	grating.quit(proc)
+finally:
+	grating.quit(proc)
+	proc.stdin.write("close\n")
+	proc.kill()
+	print("Finished Executing.")
