@@ -23,7 +23,7 @@ class Parameters(object):
             raise Exception("No attribute named: %s", ptype)
 
     def save(self, fname):
-        with open(fname, 'w') as f:
+        with open(fname, 'a') as f:
             f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.iteritems()]))
 
     def run_command(self, process):
@@ -49,6 +49,11 @@ class Manipulator(Parameters):
 
     def quit(self, process):
         process.stdin.write("close\n")
+
+    def save(self, filename):
+        with open(filename, 'w') as f:
+            [v.save(filename) for k,v in self.__dict__.iteritems()]
+
 
 class SetupParameters(Parameters):
     def __init__(self):

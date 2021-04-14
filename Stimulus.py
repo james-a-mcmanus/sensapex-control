@@ -252,7 +252,7 @@ class RunParameters(Parameters):
 
     def stringoraxispositions(self, device):
         if type(self.run_positions) == str:
-            self.run_positions = getattr(device, self.run_positions)
+            self.run_positions = getattr(device, self.run_positions) # deprecate
             if self.run_positions is None:
                 raise Exception("Tried to set run positions by attribute, but attribute was not set.")
         elif type(self.run_positions) == list:
@@ -261,8 +261,9 @@ class RunParameters(Parameters):
     def set_timings(self):
         if (self.numframes and self.framerate) is not None:
             self.timelimit = self.numframes / self.framerate # in seconds
-            actual_distance = self.timelimit * self.speed # in um
-            self.numreps = ceil(actual_distance / self.run_positions.distance) # find how many actual  repetitions we can do in that time.
+            actual_distance = self.timelimit * self.speed # distance we could travel at that speed and back in um
+            self.numreps = ceil(actual_distance / (self.run_positions.distance * 2))
+             # find how many actual  repetitions we can do in that time.
 
     def check_limits(self, device):
         if type(self.run_positions) == Axis:
@@ -404,3 +405,4 @@ main(d)
 # - seems to run approx 2x too many loops for the frame rate, distance etc.
 #       - Best guesss is that the speed isn't accurate to 4000um. 
 # - midpoint doesn't run on a single axis?          ✅
+# edit stimulus time: is in variable time timeresolution
