@@ -25,6 +25,7 @@ class Parameters(object):
     def save(self, fname):
         with open(fname, 'a') as f:
             f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.iteritems()]))
+            f.write('\n')
 
     def run_command(self, process):
         process.stdin.write(self.serialise())
@@ -163,6 +164,14 @@ class StimulusParameters(Parameters):
         self.message = "quit"
         self.run_command(process)
 
+    def save(self, filename, process=None):
+        with open(filename, 'a') as f:
+            f.write('\n'.join(["parameters.%s = %s" % (k,v) for k,v in self.__dict__.iteritems()]))
+            f.write('\n')
+        if process is not None:
+            self.message = "save"
+            self.run_command(process)
+
 def get_fname(fileroot=None):
     if fileroot is None:
         return datetime.now().strftime("%Y%m%d%H%M_%S")
@@ -186,8 +195,8 @@ def run_stimulus_recording(prepFolder, measurement, stimobj, proc):
     stimobj.trigger(proc)
     measurement.run()
     measurement.export(recordingFolder, basename)
-    stimobj.save(recordingFolder + basename + "_stimulus.txt")
-    stimobj.reset(proc)
+    stimobj.save(recordingFolder + basename + "_stimulus.txt", proc)
+    #stimobj.reset(proc)
 
 def run_manipulator_recording(prepFolder, measurement, stimobj, manobj, proc):
     recordingFolder, basename = generate_recordingfolder(prepFolder)

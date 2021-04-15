@@ -11,8 +11,8 @@ import logging
 UMP.set_library_path(r"C:\Users\James\Downloads\umsdk-1.010-binaries\x64")
 ump = UMP.get_ump()
 device_list = ump.list_devices()
-logging.basicConfig(filename='logs.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
-sys.stderr = open('errors.txt', 'w')
+logging.basicConfig(filename='logs2.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+sys.stderr = open('errors.txt', 'a')
 
 if len(device_list) == 0:
     raise Exception("No devices found.")
@@ -143,6 +143,7 @@ class Port(Serial):
         self.write(b'Q\n')
 
     def stimulus_save(self, params=None):
+        logging.warning("saving stimulus")
         self.write(b'S\n')
 
     def stimulus_reset(self, params=None):

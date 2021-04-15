@@ -7,6 +7,8 @@ from datetime import datetime
 import imp
 import time
 import numpy as np
+import winsound
+from math import ceil
 
 I = imp.load_source('Imspex', 'Imspex.py')
 proc = subprocess.Popen('python Stimulus.py', shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -15,10 +17,14 @@ if proc is None:
 	raise Exeception("couldn't open subprocess.")
 
 try:
-	prepFolder = "D:\\JDoggyDog\\TEST5\\"
+	prepFolder = "D:\\JDoggyDog\\2021-04-14-P4\\"
 	if not os.path.isdir(prepFolder):
 		os.mkdir(prepFolder)
 
+	# setup microscope.
+	table = lvbt.table("xyz-Table")
+	m = lvbt.measurement("Measurement 1")
+	zrange = np.arange(0,1, 1)
 
 	# Setup a white screen.
 	whitescreen = I.StimulusParameters()
@@ -30,43 +36,49 @@ try:
 	# Setup a grating
 	grating = I.StimulusParameters()
 	grating.filename = "Grating_2x1000y4000t1v20w.mat"
-	grating.savevideo = "0"
+	grating_frames = 4000
+	grating.savevideo = "1"
+	grating.repeatstim = "0"
+	grating.framelength = "0.1"
+	grating_stim_time = grating_frames * float(grating.framelength)
+	
+	m.setProperty("Time Time Resolution", int(ceil(grating_stim_time * 26.7)))
 
 	# setup a manipulator command.
 	y_manipulator = I.Manipulator()
 	y_manipulator.s.x_range = [0, 20000]
-	y_manipulator.s.y_range = [939,14184]
-	y_manipulator.s.z_range = [12500,14227]
-	y_manipulator.s.midpoint = 7342
+	y_manipulator.s.y_range = [3000,14184]
+	y_manipulator.s.z_range = [12500,13301]
+	y_manipulator.s.midpoint = 6267
 	y_manipulator.r.run_type = "axis"
-	y_manipulator.r.run_positions = [[0,7342,13000],[20000,7342,13000]]
-	y_manipulator.r.numframes = 100
-	y_manipulator.r.framerate = 15.3
+	y_manipulator.r.run_positions = [[0,6267,13300],[20000,6267,13300]]
+	y_manipulator.r.numframes = 500
+	y_manipulator.r.framerate = 26.7
 
 
 	x_manipulator = I.Manipulator()
 	x_manipulator.s = y_manipulator.s
 	x_manipulator.r.run_type = "midpoint"
-	x_manipulator.r.run_positions = [[7342,940,13000],[7342,14183,13000]]
-	x_manipulator.r.framerate = 15.3
-	x_manipulator.r.numframes = 100
+	x_manipulator.r.run_positions = [[6267,3000,13300],[6267,14183,13300]]
+	x_manipulator.r.framerate = 26.7
+	x_manipulator.r.numframes = 1000
 
-
-	table = lvbt.table("xyz-Table")
-	m = lvbt.measurement("Measurement 1")
-	zrange = np.arange(-2, 4, 2)
 
 	for zval in zrange:
 		
+
+		winsound.Beep(1000, 100)
 		table.z(zval)
 		time.sleep(1)
 
 		I.run_stimulus_recording(prepFolder, m, grating, proc)
-		I.run_manipulator_recording(prepFolder, m, whitescreen, y_manipulator, proc)
-		I.run_manipulator_recording(prepFolder, m, whitescreen, x_manipulator, proc)
+		print(grating.message)
+		#I.run_manipulator_recording(prepFolder, m, whitescreen, y_manipulator, proc)
+		#I.run_manipulator_recording(prepFolder, m, whitescreen, x_manipulator, proc)
+		#I.run_stimulus_recording(prepFolder, m, whitescreen, proc)
 	grating.quit(proc)
 finally:
 	grating.quit(proc)
 	proc.stdin.write("close\n")
 	proc.kill()
-	print("Finished Executing.")
+	winsound.Beep(1000, 2000)

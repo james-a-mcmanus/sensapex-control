@@ -22,3 +22,8 @@ Messages:
 	- These are all ints
 'L': Load. Followed by stimulus filename.
 'T': trigger.
+
+
+
+# Errors to check:
+Do as many exception handling on the impsector side as possible - or otherwise work out why imspector doesn't record erros happening within a module...
